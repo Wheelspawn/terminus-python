@@ -9,6 +9,10 @@ from entity import Entity
 from input_handlers import EventHandler
 from procgen import generate_dungeon, generate_overworld
 
+import numpy as np
+
+np.random.seed = np.random.randint(-1000,1000) # -335
+
 l = [(random.randint(0,80),
       random.randint(0,50),
       (random.randint(50,100),
@@ -45,7 +49,7 @@ def main():
             screen_width,
             screen_height,
             tileset=tileset,
-            title="Terminus",
+            title="Terminus ({})".format(np.random.seed),
             vsync=True,
     ) as context:
         root_console = tcod.Console(screen_width, screen_height, order="F")

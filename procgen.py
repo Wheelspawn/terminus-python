@@ -68,14 +68,12 @@ def generate_dungeon(map_width: int, map_height: int) -> GameMap:
     
     return dungeon
 
-def generate_multiridge_array(map_width: int, map_height: int, freq: float = 0.007, lacun: int = 2.5, sigma: float = 3.5, max_int: int = 896) -> np.ndarray:
+def generate_multiridge_array(map_width: int, map_height: int, freq: float = 0.005, lacun: int = 2.5, sigma: float = 3.5, max_int: int = 896) -> np.ndarray:
     """Return array of Multiridge noise with values constrained from 0 to max_int.
        Frequency is like sigma, decreasing the size of biomes. Lacunarity affects snakiness of mountains, higher meaning snakier. Sigma parameter smooths terrain."""
-    rm = RidgedMulti(frequency=freq,lacunarity=lacun)
-    seed1 = np.random.randint(-(10**5),(10**5))
-    seed2 = np.random.randint(-(10**5),(10**5))
-    mridgemap = np.array([[rm.get_value(i+seed1,j+seed2,0.759823) for i in range(map_width)] for j in range(map_height)])
-    mridgemap = gaussian_filter(mridgemap,sigma=sigma)
+    rm = RidgedMulti(frequency=freq,lacunarity=lacun,seed=np.random.seed)
+    mridgemap = np.array([[rm.get_value(i+np.random.seed,j+np.random.seed,0.759823) for i in range(map_width)] for j in range(map_height)])
+    # mridgemap = gaussian_filter(mridgemap,sigma=sigma)
     mridgemap += abs(mridgemap.min())
     mridgemap /= mridgemap.max()
     mridgemap *= max_int
@@ -86,9 +84,7 @@ def generate_multiridge_array(map_width: int, map_height: int, freq: float = 0.0
 def generate_perlin_noise_array(map_width: int, map_height: int, sigma: float = 3.5, max_int: int = 896) -> np.ndarray:
     """Return array of Perlin noise with values constrained from 0 to max_int.
        Sigma parameter smooths terrain."""
-    seed1 = np.random.randint(-(10**5),(10**5))
-    seed2 = np.random.randint(-(10**5),(10**5))
-    perlinmap = np.array([[snoise2(i+seed1,j+seed2) for i in range(map_width)] for j in range(map_height)])
+    perlinmap = np.array([[snoise2(i+np.random.seed,j+np.random.seed) for i in range(map_width)] for j in range(map_height)])
     perlinmap = gaussian_filter(perlinmap,sigma=sigma)
     perlinmap += abs(perlinmap.min())
     perlinmap /= perlinmap.max()
@@ -98,25 +94,25 @@ def generate_perlin_noise_array(map_width: int, map_height: int, sigma: float = 
     return perlinmap
 
 def generate_overworld(map_width: int, map_height: int, sigma: float = 10, max_int: int = 896) -> GameMap:
+    """Generates overworld.
+       Returns overworld object."""
     overworld = GameMap(map_width, map_height)
-    elevation = generate_multiridge_array(map_width, map_height, sigma = 1.5, max_int = max_int)
+    elevation = generate_multiridge_array(map_width, map_height, sigma = 0.6, max_int = max_int)
     foilage = generate_perlin_noise_array(map_width, map_height,0.5,40)
     
-    ocean_gradient = [tile_types.new_tile(walkable=False, transparent=True, dark=(ord(" "), (10, 95, 250,), (10, 95, 250))) for i in range(0,10)]
+    ocean_gradient = [tile_types.new_tile(walkable=True, transparent=True, dark=(ord(" "), (10, 95, 250,), (10, 95, 250))) for i in range(0,85)]
+    ocean_gradient.extend([tile_types.new_tile(walkable=True, transparent=True, dark=(ord(" "), g, g)) for g in rgb_gradient( (20,105,250), (131,242,246), 35 )])
     
-    ocean_gradient.extend([tile_types.new_tile(walkable=True, transparent=True, dark=(ord(" "), g, g)) for g in rgb_gradient( (51,116,255), (131,242,246), 9 )])
+    shore_gradient = [tile_types.new_tile(walkable=True, transparent=True, dark=(ord(" "), g, g)) for g in rgb_gradient( (225,225,200), (205,205,180), 6 )]
     
-    shore_gradient = [tile_types.new_tile(walkable=True, transparent=True, dark=(ord(" "), g, g)) for g in rgb_gradient( (225,225,200), (205,205,180), 4 )]
+    dirt_gradient = [tile_types.new_tile(walkable=True, transparent=True, dark=(ord(" "), g, g)) for g in rgb_gradient( (190,190,154), (110,120,0), 6 )]
+    dirt_gradient.extend([tile_types.new_tile(walkable=True, transparent=True, dark=(ord(" "), g, g)) for g in rgb_gradient((110, 120, 0,), (110, 100, 0,), 10)])
     
-    dirt_gradient = [tile_types.new_tile(walkable=True, transparent=True, dark=(ord(" "), g, g)) for g in rgb_gradient( (175,180,154), (120,103,0), 10 )]
+    mountain_gradient = [tile_types.new_tile(walkable=False, transparent=True, dark=(ord(" "), g, g)) for g in rgb_gradient( (110,90,30), (125,115,60), 8)]
     
-    dirt_gradient.extend([tile_types.new_tile(walkable=True, transparent=True, dark=(ord(" "), (120, 100, 0,), (120, 100, 0,))) for i in range(0,8)])
+    ice_cap_gradient = [tile_types.new_tile(walkable=False, transparent=True, dark=(ord(" "), g, g)) for g in rgb_gradient( (225,220,210), (235,230,220), 2 )]
     
-    mountain_gradient = [tile_types.new_tile(walkable=False, transparent=True, dark=(ord(" "), g, g)) for g in rgb_gradient( (110,90,30), (125,115,60), 6)]
-    
-    ice_cap = [tile_types.new_tile(walkable=False, transparent=True, dark=(ord(" "), g, g)) for g in rgb_gradient( (225,220,210), (235,230,220), 2 )]
-    
-    gradients = ocean_gradient + shore_gradient + dirt_gradient + mountain_gradient + ice_cap
+    gradients = ocean_gradient + shore_gradient + dirt_gradient + mountain_gradient + ice_cap_gradient
     
     for m in range(map_height):
         for n in range(map_width):
@@ -151,6 +147,21 @@ def generate_overworld(map_width: int, map_height: int, sigma: float = 10, max_i
     return overworld
 
 def rgb_gradient(rgb1: Tuple[float,float,float], rgb2: Tuple[float,float,float], step: float):
+    """
+    Returns rgb gradient from rgb1 to rgb2, with step+1 specifying the number of values to return.
+    
+    Examples:
+        >>> rgb_gradient((200,200,200),(215,215,215),3)
+        >>> [(200, 200, 200), (205, 205, 205), (210, 210, 210), (215, 215, 215)]
+        
+        >>> rgb_gradient((200,200,200),(215,215,215),5)
+        >>> [(200, 200, 200),
+             (203, 203, 203),
+             (206, 206, 206),
+             (209, 209, 209),
+             (212, 212, 212),
+             (215, 215, 215)]
+    """
     l = []
     for i in range(step+1):
         l.append(( int(rgb1[0] + (rgb2[0]-rgb1[0])*i/step), int(rgb1[1] + (rgb2[1]-rgb1[1])*i/step), int(rgb1[2] + (rgb2[2]-rgb1[2])*i/step) ))
