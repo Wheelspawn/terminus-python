@@ -11,7 +11,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from engine import engine
+    from engine import Engine
     from entity import Entity
     
 
@@ -43,8 +43,32 @@ class MovementAction(Action):
         dest_n = entity.n + self.dn
         
         if not engine.game_map.in_bounds(dest_m, dest_n):
+            if dest_m == -1:
+                engine.game_map.transfer_region((-1,0))
+            if dest_m == engine.game_map.height:
+                engine.game_map.transfer_region((1,0))
+            if dest_n == -1:
+                engine.game_map.transfer_region((0,-1))
+            if dest_n == engine.game_map.width:
+                engine.game_map.transfer_region((0,1))
+            
+            entity.move(self.dm, self.dn)
+            
+            entity.m %= engine.game_map.current_region.height
+            entity.n %= engine.game_map.current_region.width
+            
             return # Destination is out of bounds.
-        if not engine.game_map.tiles["walkable"][dest_n, dest_m]:
+        if not engine.game_map.tiles["walkable"][dest_m][dest_n]:
             return # destination is blocked by a tile
         
         entity.move(self.dm, self.dn)
+
+class ClimbAction(Action):
+    def __init__(self, direction: int):
+        super().__init__()
+        
+        self.direction = direction
+    
+    def perform(self, engine: Engine, entity: Entity) -> None:
+        engine.game_map.climb(self.direction)
+            

@@ -11,7 +11,6 @@ from typing import Iterator, Tuple
 
 import tcod
 
-from game_map import GameMap
 import tile_types
 
 from noise import snoise2
@@ -54,6 +53,7 @@ def tunnel_between(start: Tuple[int, int], end: Tuple[int, int]) -> Iterator[Tup
     for n, m in tcod.los.bresenham((corner_n, corner_m), (n2, m2)).tolist():
         yield n, m
         
+'''
 def generate_dungeon(map_width: int, map_height: int) -> GameMap:
     dungeon = GameMap(map_width, map_height)
     
@@ -67,83 +67,138 @@ def generate_dungeon(map_width: int, map_height: int) -> GameMap:
         dungeon.tiles[n, m] = tile_types.floor
     
     return dungeon
+'''
 
-def generate_multiridge_array(map_width: int, map_height: int, freq: float = 0.005, lacun: int = 2.5, sigma: float = 3.5, max_int: int = 896) -> np.ndarray:
-    """Return array of Multiridge noise with values constrained from 0 to max_int.
+# rm = RidgedMulti(frequency=0.005,lacunarity=3.5,octaves=6,seed=np.random.seed)
+
+def cutoff(x, min_val=-0.5, max_val=0.7):
+    if x < min_val:
+        return min_val
+    if x > max_val:
+        return max_val
+    return x
+
+def generate_multiridge_array(
+        start_m: int,
+        start_n: int,
+        end_m: int,
+        end_n: int,
+        min_range: int = 0,
+        max_range: int = 896,
+        freq: float = 0.005,
+        lacun: int = 3.5) -> np.ndarray:
+    """Return array of Multiridge noise with values constrained from 0 to max_range.
        Frequency is like sigma, decreasing the size of biomes. Lacunarity affects snakiness of mountains, higher meaning snakier. Sigma parameter smooths terrain."""
-    rm = RidgedMulti(frequency=freq,lacunarity=lacun,seed=np.random.seed)
-    mridgemap = np.array([[rm.get_value(i+np.random.seed,j+np.random.seed,0.759823) for i in range(map_width)] for j in range(map_height)])
-    # mridgemap = gaussian_filter(mridgemap,sigma=sigma)
+    z = 0.759823
+    rm = RidgedMulti(frequency=freq,lacunarity=lacun,octaves=6,seed=np.random.seed)
+    mridgemap = np.array([[rm.get_value(n,m,z) for n in range(start_n,end_n)] for m in range(start_m,end_m)])
+    print(np.round(mridgemap,3))
+    print(np.round(mridgemap.min(),3),np.round(mridgemap.mean(),3),np.round(mridgemap.max(),3))
+    print()
+    vec = np.vectorize(cutoff)
+    mridgemap=vec(mridgemap)
+    mridgemap += 0.5
+    mridgemap /= 1.2
+    mridgemap *= max_range
+    mridgemap = mridgemap.astype('int32').astype(object)
+    '''
     mridgemap += abs(mridgemap.min())
     mridgemap /= mridgemap.max()
-    mridgemap *= max_int
+    mridgemap *= max_range
     mridgemap = mridgemap.astype('int32').astype(object)
+    '''
     
     return mridgemap
 
-def generate_perlin_noise_array(map_width: int, map_height: int, sigma: float = 3.5, max_int: int = 896) -> np.ndarray:
-    """Return array of Perlin noise with values constrained from 0 to max_int.
+def generate_perlin_noise_array(
+        map_height: int,
+        map_width: int,
+        offset_m: int,
+        offset_n: int,
+        sigma: float = 3.5,
+        max_range: int = 896) -> np.ndarray:
+    """Return array of Perlin noise with values constrained from 0 to max_range.
        Sigma parameter smooths terrain."""
-    perlinmap = np.array([[snoise2(i+np.random.seed,j+np.random.seed) for i in range(map_width)] for j in range(map_height)])
+    perlinmap = np.array([[snoise2(n+offset_n*map_width+np.random.seed,m+offset_m*map_height+np.random.seed) for n in range(map_width)] for m in range(map_height)])
     perlinmap = gaussian_filter(perlinmap,sigma=sigma)
     perlinmap += abs(perlinmap.min())
     perlinmap /= perlinmap.max()
-    perlinmap *= max_int
+    perlinmap *= max_range
     perlinmap = perlinmap.astype('int32').astype(object)
     
     return perlinmap
 
-def generate_overworld(map_width: int, map_height: int, sigma: float = 10, max_int: int = 896) -> GameMap:
+def generate_overworld(
+        map_height: int,
+        map_width: int,
+        offset_m: int,
+        offset_n: int,
+        foilage_blur: float = 0.5,
+        foilage_range: float = 40,
+        elevation_range: int = 896) -> np.ndarray:
     """Generates overworld.
        Returns overworld object."""
-    overworld = GameMap(map_width, map_height)
-    elevation = generate_multiridge_array(map_width, map_height, sigma = 0.6, max_int = max_int)
-    foilage = generate_perlin_noise_array(map_width, map_height,0.5,40)
     
-    ocean_gradient = [tile_types.new_tile(walkable=True, transparent=True, dark=(ord(" "), (10, 95, 250,), (10, 95, 250))) for i in range(0,85)]
-    ocean_gradient.extend([tile_types.new_tile(walkable=True, transparent=True, dark=(ord(" "), g, g)) for g in rgb_gradient( (20,105,250), (131,242,246), 35 )])
+    import time
+    t0 = time.time()
     
+    m0 = map_height * offset_m
+    n0 = map_width * offset_n
+    m1 = map_height * offset_m + map_height
+    n1 = map_width * offset_n + map_width
+    
+    overworld = np.full((map_height, map_width), fill_value=tile_types.wall, order="F")
+    elevation = generate_multiridge_array(m0, n0, m1, n1, min_range = 0, max_range = elevation_range)
+    foilage = generate_perlin_noise_array(map_height, map_width, offset_m, offset_n, foilage_blur, foilage_range)
+    
+    t1 = time.time()
+    
+    ocean_gradient = [tile_types.new_tile(walkable=True, transparent=True, dark=(ord(" "), (10, 95, 250,), (10, 95, 250))) for i in range(0,75)]
+    coast_gradient = [tile_types.new_tile(walkable=True, transparent=True, dark=(ord(" "), g, g)) for g in rgb_gradient( (20,105,250), (131,242,246), 30 )]
     shore_gradient = [tile_types.new_tile(walkable=True, transparent=True, dark=(ord(" "), g, g)) for g in rgb_gradient( (225,225,200), (205,205,180), 6 )]
-    
-    dirt_gradient = [tile_types.new_tile(walkable=True, transparent=True, dark=(ord(" "), g, g)) for g in rgb_gradient( (190,190,154), (110,120,0), 6 )]
-    dirt_gradient.extend([tile_types.new_tile(walkable=True, transparent=True, dark=(ord(" "), g, g)) for g in rgb_gradient((110, 120, 0,), (110, 100, 0,), 10)])
-    
+    lowgrass_gradient = [tile_types.new_tile(walkable=True, transparent=True, dark=(ord(" "), g, g)) for g in rgb_gradient( (190,190,154), (110,120,0), 6 )]
+    highgrass_gradient = [tile_types.new_tile(walkable=True, transparent=True, dark=(ord(" "), g, g)) for g in rgb_gradient((110, 120, 0,), (110, 100, 0,), 12)]
     mountain_gradient = [tile_types.new_tile(walkable=False, transparent=True, dark=(ord(" "), g, g)) for g in rgb_gradient( (110,90,30), (125,115,60), 8)]
-    
     ice_cap_gradient = [tile_types.new_tile(walkable=False, transparent=True, dark=(ord(" "), g, g)) for g in rgb_gradient( (225,220,210), (235,230,220), 2 )]
     
-    gradients = ocean_gradient + shore_gradient + dirt_gradient + mountain_gradient + ice_cap_gradient
+    gradients = ocean_gradient + coast_gradient + shore_gradient + lowgrass_gradient + highgrass_gradient + mountain_gradient + ice_cap_gradient
+    
+    t2 = time.time()
     
     for m in range(map_height):
         for n in range(map_width):
             
-            overworld.tiles[n][m] = gradients[int((elevation[m][n]/max_int)*(len(gradients)-1))]
+            overworld[m][n] = gradients[int((elevation[m][n]/elevation_range)*(len(gradients)-1))]
             
-            if overworld.tiles[n][m] in dirt_gradient:
+            if (overworld[m][n] in lowgrass_gradient) or (overworld[m][n] in highgrass_gradient):
                 if foilage[m][n] < 20:
-                    overworld.tiles[n][m]['dark'][1] = (0,200+np.random.choice([-20,-10,0,10,20]),0)
+                    overworld[m][n]['dark'][1] = (0,200+np.random.choice([-20,-10,0,10,20]),0)
                     if 3 > foilage[m][n]:
-                        overworld.tiles[n][m-1]['dark'][1] = (0,200+np.random.choice([-20,-10,0,10,20]),0)
-                        overworld.tiles[n][m-1]['walkable'] = False
-                        overworld.tiles[n][m-1]['dark'][0] = ord("▓")
-                        overworld.tiles[n][m]['dark'][1] = (100,80,0)
-                        overworld.tiles[n][m]['walkable'] = False
-                        overworld.tiles[n][m]['dark'][0] = ord("|")
+                        overworld[m-1][n]['dark'][1] = (0,200+np.random.choice([-20,-10,0,10,20]),0)
+                        overworld[m-1][n]['walkable'] = False
+                        overworld[m-1][n]['dark'][0] = ord("▓")
+                        overworld[m][n]['dark'][1] = (100,80,0)
+                        overworld[m][n]['walkable'] = False
+                        overworld[m][n]['dark'][0] = ord("|")
                     elif 2 <= foilage[m][n] < 15:
-                        overworld.tiles[n][m]['dark'][0] = ord("v")
+                        overworld[m][n]['dark'][0] = ord("v")
                     elif 15 <= foilage[m][n]:
-                        overworld.tiles[n][m]['dark'][0] = ord("W")
+                        overworld[m][n]['dark'][0] = ord("W")
             
-            if overworld.tiles[n][m] in shore_gradient:
+            if overworld[m][n] in shore_gradient:
                 if foilage[m][n] < 6:
-                    overworld.tiles[n][m]['dark'][1] = (0,200+np.random.choice([-20,-10,0,10,20]),0)
-                    overworld.tiles[n][m]['dark'][0] = ord("|")
+                    overworld[m][n]['dark'][1] = (0,200+np.random.choice([-20,-10,0,10,20]),0)
+                    overworld[m][n]['dark'][0] = ord("|")
             
-            if overworld.tiles[n][m] in mountain_gradient:
+            if overworld[m][n] in mountain_gradient:
                 if foilage[m][n] < 4:
-                    overworld.tiles[n][m]['dark'][1] = (100,80,0)
-                    overworld.tiles[n][m]['dark'][0] = ord("|")
-            
+                    overworld[m][n]['dark'][1] = (100,80,0)
+                    overworld[m][n]['dark'][0] = ord("|")
+    
+    t3 = time.time()
+    
+    print(t1-t0)
+    print(t3-t2)
     return overworld
 
 def rgb_gradient(rgb1: Tuple[float,float,float], rgb2: Tuple[float,float,float], step: float):

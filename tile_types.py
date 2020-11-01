@@ -9,6 +9,7 @@ Created on Mon Oct 12 13:44:32 2020
 from typing import Tuple
 
 import numpy as np
+from color import *
 
 # Tile graphics structured type compatible with Console.tiles_rgb.
 graphic_dt = np.dtype(
@@ -40,23 +41,14 @@ floor = new_tile(
 wall = new_tile(
     walkable=False, transparent=False, dark=(ord(" "), (255, 255, 255), (0, 0, 100)))
 
-deep_ocean = new_tile(
-    walkable=False, transparent=True, dark=(ord(" "), (0, 80, 255,), (0, 80, 255)))
-
-coast = new_tile(
-    walkable=True, transparent=True, dark=(ord(" "), (90, 150, 225,), (60, 120, 255)))
-
-shore = new_tile(
-    walkable=True, transparent=True, dark=(ord(" "), (225, 225, 200,), (225, 225, 200,)))
-
 grass = new_tile(
-    walkable=True, transparent=True, dark=(ord("'"), (60, 160, 50,), (90, 60, 0)))
+    walkable=True, transparent=True, dark=(ord("'"), green, green))
 
-light_mountain = new_tile(
-    walkable=True, transparent=True, dark=(ord(" "), (190, 180, 160,), (190, 180, 160,)))
+tree_leaves = new_tile(
+    walkable=False, transparent=True, dark=(ord(" "), green, green))
 
-impassable_mountain = new_tile(
-    walkable=False, transparent=True, dark=(ord(" "), (240, 235, 230,), (240, 235, 230,)))
+tree_trunk = new_tile(
+    walkable=False, transparent=True, dark=(ord(" "), brown, brown))
 
 '''
 class Tile:
